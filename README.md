@@ -1,6 +1,6 @@
 # esquel
 
-A package for creating SQL statements and scanning rows into Go structs without reflection. You can pronounce it however you like, but my choice is *es'kel*.
+A package for creating SQL statements and scanning rows into Go structs without reflection.
 
 ```go
 go get github.com/wroge/esquel
@@ -122,11 +122,11 @@ func main() {
 
 	queryBooks := esquel.Query[Book, QueryBook]{
 		Statement: esquel.Template(`
-	SELECT 
-		books.id AS book_id, books.title AS book_title, books.created AS book_created, 
-		authors.id AS author_id, authors.name AS author_name
-	FROM books LEFT JOIN authors ON authors.id = books.author_id
-	`, esquel.Prefix("WHERE",
+			SELECT 
+				books.id AS book_id, books.title AS book_title, books.created AS book_created, 
+				authors.id AS author_id, authors.name AS author_name
+			FROM books LEFT JOIN authors ON authors.id = books.author_id
+		`, esquel.Prefix("WHERE",
 			esquel.Join(" AND ",
 				esquel.Func(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
