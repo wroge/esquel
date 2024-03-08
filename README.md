@@ -170,21 +170,21 @@ func main() {
 	// SELECT
 	// 	books.id AS book_id, books.title AS book_title, books.created AS book_created,
 	// 	authors.id AS author_id, authors.name AS author_name
-	// FROM books LEFT JOIN authors ON authors.id = books.author_id 
+	// FROM books LEFT JOIN authors ON authors.id = books.author_id
 	// WHERE books.title = ?
 	// [The Bitcoin Standard]
 
 	fmt.Println(books)
 	// [{1 The Bitcoin Standard {1 Saifedean Ammous} 2024-03-08 13:10:36 +0000 UTC}]
 
-	books, err = queryBooks.All(ctx, db, QueryBook{Author: "Vijay Boyapati"})
+	books, err = queryBooks.All(ctx, db, QueryBook{Author: "Vijay Boyapati", Title: "The Bullish Case for Bitcoin"})
 	if err != nil {
 		panic(err)
 	}
 	// SELECT
 	// 	books.id AS book_id, books.title AS book_title, books.created AS book_created,
 	// 	authors.id AS author_id, authors.name AS author_name
-	// FROM books LEFT JOIN authors ON authors.id = books.author_id 
+	// FROM books LEFT JOIN authors ON authors.id = books.author_id
 	// WHERE books.title = ? AND authors.name = ?
 	// [The Bullish Case for Bitcoin Vijay Boyapati]
 
