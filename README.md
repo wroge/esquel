@@ -4,8 +4,6 @@ A package for creating SQL statements and scanning rows into Go structs without 
 
 ```go
 go get github.com/wroge/esquel
-
-import "github.com/wroge/esquel"
 ```
 
 ## Example
