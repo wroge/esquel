@@ -57,12 +57,22 @@ func main() {
 		panic(err)
 	}
 
-	_, err = db.Exec("CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+	_, err = db.Exec(`
+	CREATE TABLE authors (
+		id INTEGER PRIMARY KEY, 
+		name TEXT NOT NULL
+	)`)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author_id INTEGER REFERENCES authors(id), created DEFAULT CURRENT_TIMESTAMP)")
+	_, err = db.Exec(`
+	CREATE TABLE books (
+		id INTEGER PRIMARY KEY, 
+		title TEXT, 
+		author_id INTEGER REFERENCES authors(id), 
+		created DEFAULT CURRENT_TIMESTAMP
+	)`)
 	if err != nil {
 		panic(err)
 	}
@@ -116,10 +126,12 @@ func main() {
 	// [1 2 3]
 
 	queryBooks := esquel.Query[Book, QueryBook]{
-		Statement: esquel.Template[QueryBook](`SELECT 
+		Statement: esquel.Template(`
+SELECT 
 	books.id AS book_id, books.title AS book_title, books.created AS book_created, 
 	authors.id AS author_id, authors.name AS author_name
-FROM books LEFT JOIN authors ON authors.id = books.author_id`,
+FROM books LEFT JOIN authors ON authors.id = books.author_id
+`,
 			esquel.Prefix("WHERE", esquel.Join(" AND ",
 				esquel.Func(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
