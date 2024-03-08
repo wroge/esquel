@@ -127,12 +127,12 @@ func main() {
 
 	queryBooks := esquel.Query[Book, QueryBook]{
 		Statement: esquel.Template(`
-SELECT 
-	books.id AS book_id, books.title AS book_title, books.created AS book_created, 
-	authors.id AS author_id, authors.name AS author_name
-FROM books LEFT JOIN authors ON authors.id = books.author_id
-`,
-			esquel.Prefix("WHERE", esquel.Join(" AND ",
+	SELECT 
+		books.id AS book_id, books.title AS book_title, books.created AS book_created, 
+		authors.id AS author_id, authors.name AS author_name
+	FROM books LEFT JOIN authors ON authors.id = books.author_id
+	`, esquel.Prefix("WHERE",
+			esquel.Join(" AND ",
 				esquel.Func(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
 						return "", nil, nil
@@ -147,8 +147,8 @@ FROM books LEFT JOIN authors ON authors.id = books.author_id
 
 					return "authors.name = ?", []any{q.Author}, nil
 				}),
-			)),
-		),
+			),
+		)),
 		Columns: map[string]esquel.Scanner[Book]{
 			"book_id":    esquel.Scan(func(b *Book, id int64) { b.ID = id }),
 			"book_title": esquel.ScanNull("No Title", func(b *Book, title string) { b.Title = title }),
@@ -175,7 +175,8 @@ FROM books LEFT JOIN authors ON authors.id = books.author_id
 	// SELECT
 	// 	books.id AS book_id, books.title AS book_title, books.created AS book_created,
 	// 	authors.id AS author_id, authors.name AS author_name
-	// FROM books LEFT JOIN authors ON authors.id = books.author_id WHERE books.title = ?
+	// FROM books LEFT JOIN authors ON authors.id = books.author_id 
+	// WHERE books.title = ?
 	// [The Bitcoin Standard]
 
 	fmt.Println(books)
@@ -188,7 +189,8 @@ FROM books LEFT JOIN authors ON authors.id = books.author_id
 	// SELECT
 	// 	books.id AS book_id, books.title AS book_title, books.created AS book_created,
 	// 	authors.id AS author_id, authors.name AS author_name
-	// FROM books LEFT JOIN authors ON authors.id = books.author_id WHERE books.title = ? AND authors.name = ?
+	// FROM books LEFT JOIN authors ON authors.id = books.author_id 
+	// WHERE books.title = ? AND authors.name = ?
 	// [The Bullish Case for Bitcoin Vijay Boyapati]
 
 	fmt.Println(books)
