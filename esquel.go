@@ -320,6 +320,17 @@ func (jp listStatement[P]) ToSQL(param []P) (string, []any, error) {
 	)
 
 	for _, p := range param {
+		if jp.stmt == nil {
+			if b.Len() > 0 {
+				b.WriteString(jp.sep)
+			}
+
+			b.WriteString("?")
+			arguments = append(arguments, p)
+
+			continue
+		}
+
 		sql, args, err := jp.stmt.ToSQL(p)
 		if err != nil {
 			return "", nil, err
