@@ -100,7 +100,7 @@ func main() {
 
 	insertBooks := esquel.Query[int64, []InsertBook]{
 		Statement: esquel.Template("INSERT INTO books (title, author_id) VALUES ? RETURNING id",
-			esquel.List(",", esquel.Func(func(param InsertBook) (string, []any, error) {
+			esquel.List(",", esquel.Param(func(param InsertBook) (string, []any, error) {
 				return "(?,?)", []any{param.Title, param.AuthorID}, nil
 			})),
 		),
@@ -128,14 +128,14 @@ func main() {
 			FROM books LEFT JOIN authors ON authors.id = books.author_id
 		`, esquel.Prefix("WHERE",
 			esquel.Join(" AND ",
-				esquel.Func(func(q QueryBook) (string, []any, error) {
+				esquel.Param(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
 						return "", nil, nil
 					}
 
 					return "books.title = ?", []any{q.Title}, nil
 				}),
-				esquel.Func(func(q QueryBook) (string, []any, error) {
+				esquel.Param(func(q QueryBook) (string, []any, error) {
 					if q.Author == "" {
 						return "", nil, nil
 					}

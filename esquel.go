@@ -187,39 +187,29 @@ func (t templateStatement[P]) ToSQL(param P) (string, []any, error) {
 	return strings.TrimSpace(builder.String()), arguments, nil
 }
 
-func Map[V any, P any](m func(P) V, stmt Statement[V]) Statement[P] {
-	return mapStatement[V, P]{
-		mapper: m,
-		stmt:   stmt,
+func Recursive[P any](depth int, f func(self Statement[P], param P) (string, []any, error)) Statement[P] {
+	return recursiveStatement[P]{
+		maxDepth: depth,
+		stmt:     f,
 	}
 }
 
-type mapStatement[V any, P any] struct {
-	mapper func(param P) V
-	stmt   Statement[V]
+type recursiveStatement[P any] struct {
+	maxDepth int
+	stmt     func(self Statement[P], param P) (string, []any, error)
 }
 
-func (m mapStatement[V, P]) ToSQL(param P) (string, []any, error) {
-	v := m.mapper(param)
-
-	if m.stmt == nil {
-		return "?", []any{v}, nil
+func (s recursiveStatement[P]) ToSQL(param P) (string, []any, error) {
+	if s.maxDepth < 0 {
+		return "", nil, errors.New("recursive statement too deep")
 	}
 
-	return m.stmt.ToSQL(v)
+	s.maxDepth--
+
+	return s.stmt(s, param)
 }
 
-func Self[P any](f func(self Statement[P], param P) (string, []any, error)) Statement[P] {
-	return selfStatement[P](f)
-}
-
-type selfStatement[P any] func(self Statement[P], param P) (string, []any, error)
-
-func (s selfStatement[P]) ToSQL(param P) (string, []any, error) {
-	return s(s, param)
-}
-
-func Func[P any](f func(param P) (string, []any, error)) Statement[P] {
+func Param[P any](f func(param P) (string, []any, error)) Statement[P] {
 	return paramStatement[P](f)
 }
 
