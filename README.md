@@ -1,3 +1,6 @@
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white)](https://pkg.go.dev/github.com/wroge/esquel)
+[![GitHub tag (latest SemVer)](https://img.shields.io/github/tag/wroge/esquel.svg?style=social)](https://github.com/wroge/esquel/tags)
+
 # esquel
 
 A package for creating SQL statements and scanning rows into Go structs without reflection.
