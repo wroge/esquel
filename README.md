@@ -147,8 +147,10 @@ func main() {
 		Columns: map[string]esquel.Scanner[Book]{
 			"book_id":    esquel.Scan(func(b *Book, id int64) { b.ID = id }),
 			"book_title": esquel.Scan(func(b *Book, title sql.NullString) { b.Title = title.String }),
-			"book_created": esquel.ScanTime(time.DateTime,
-				esquel.Scan(func(b *Book, created time.Time) { b.Created = created })),
+			"book_created": esquel.Scan(func(b *Book, created time.Time) { b.Created = created }).
+				AsString(func(s string) (time.Time, error) {
+					return time.Parse(time.DateTime, s)
+				}),
 			"author_id":   esquel.Scan(func(b *Book, id int64) { b.Author.ID = id }),
 			"author_name": esquel.Scan(func(b *Book, name string) { b.Author.Name = name }),
 		},

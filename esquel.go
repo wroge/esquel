@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Querier interface {
@@ -362,17 +361,6 @@ func Scan[V, T any](f func(*T, V)) ScanFunc[V, T] {
 		f(t, v)
 
 		return nil
-	}
-}
-
-func ScanTime[T any](layout string, f ScanFunc[time.Time, T]) ScanFunc[string, T] {
-	return func(t *T, s string) error {
-		v, err := time.Parse(layout, s)
-		if err != nil {
-			return err
-		}
-
-		return f(t, v)
 	}
 }
 
