@@ -262,18 +262,6 @@ func (f prefixStatement[P]) ToSQL(param P) (string, []any, error) {
 	return f.prefix + " " + sql, args, nil
 }
 
-func Where[P any](stmts ...Statement[P]) Statement[P] {
-	return Prefix("WHERE", Join(" AND ", stmts...))
-}
-
-func Having[P any](stmts ...Statement[P]) Statement[P] {
-	return Prefix("HAVING", Join(" AND ", stmts...))
-}
-
-func And[P any](stmts ...Statement[P]) Statement[P] {
-	return Stmt("(?)", Join(" AND ", stmts...))
-}
-
 func Join[P any](sep string, stmts ...Statement[P]) Statement[P] {
 	return joinStatement[P]{
 		sep:   sep,

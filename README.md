@@ -125,7 +125,7 @@ func main() {
 			SELECT books.id AS book_id, books.title AS book_title, books.created AS book_created, 
 				authors.id AS author_id, authors.name AS author_name
 			FROM books LEFT JOIN authors ON authors.id = books.author_id ? LIMIT 10`,
-			esquel.Where(
+			esquel.Prefix("WHERE", esquel.Join(" AND ",
 				esquel.Expr(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
 						return "", nil, nil
@@ -140,7 +140,7 @@ func main() {
 
 					return "authors.name = ?", []any{q.Author}, nil
 				}),
-			)),
+			))),
 		Columns: map[string]esquel.Scanner[Book]{
 			"book_id":    esquel.Scan(func(b *Book, id int64) { b.ID = id }),
 			"book_title": esquel.Scan(func(b *Book, title sql.NullString) { b.Title = title.String }),
