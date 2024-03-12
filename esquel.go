@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Querier interface {
@@ -41,7 +42,7 @@ func (sp StaticPlaceholder) ReplacePlaceholders(sql string) (string, error) {
 	)
 
 	for {
-		index := strings.IndexRune(sql, '?')
+		index := strings.IndexByte(sql, '?')
 		if index < 0 {
 			builder.WriteString(sql)
 
@@ -73,7 +74,7 @@ func (pp PositionalPlaceholder) ReplacePlaceholders(sql string) (string, error) 
 	)
 
 	for {
-		index := strings.IndexRune(sql, '?')
+		index := strings.IndexByte(sql, '?')
 		if index < 0 {
 			builder.WriteString(sql)
 
@@ -100,7 +101,7 @@ type Statement[P any] interface {
 	ToSQL(param P) (string, []any, error)
 }
 
-func Template[P any](sql string, args ...Statement[P]) Statement[P] {
+func Stmt[P any](sql string, args ...Statement[P]) Statement[P] {
 	return templateStatement[P]{
 		sql:  sql,
 		args: args,
@@ -116,11 +117,11 @@ func (t templateStatement[P]) ToSQL(param P) (string, []any, error) {
 	var (
 		builder   strings.Builder
 		arguments = make([]any, 0, len(t.args))
-		exprIndex int
+		argIndex  int
 	)
 
 	for {
-		index := strings.IndexRune(t.sql, '?')
+		index := strings.IndexByte(t.sql, '?')
 		if index < 0 {
 			builder.WriteString(t.sql)
 
@@ -137,13 +138,11 @@ func (t templateStatement[P]) ToSQL(param P) (string, []any, error) {
 		builder.WriteString(t.sql[:index])
 		t.sql = t.sql[index+1:]
 
-		if exprIndex >= len(t.args) || t.args[exprIndex] == nil {
+		if argIndex >= len(t.args) || t.args[argIndex] == nil {
 			builder.WriteByte('?')
 			arguments = append(arguments, param)
-
-			continue
 		} else {
-			sql, args, err := t.args[exprIndex].ToSQL(param)
+			sql, args, err := t.args[argIndex].ToSQL(param)
 			if err != nil {
 				return "", nil, err
 			}
@@ -159,15 +158,16 @@ func (t templateStatement[P]) ToSQL(param P) (string, []any, error) {
 			builder.WriteString(sql)
 			arguments = append(arguments, args...)
 		}
-		exprIndex++
+
+		argIndex++
 	}
 
-	for ; exprIndex < len(t.args); exprIndex++ {
-		if t.args[exprIndex] == nil {
+	for ; argIndex < len(t.args); argIndex++ {
+		if t.args[argIndex] == nil {
 			continue
 		}
 
-		sql, args, err := t.args[exprIndex].ToSQL(param)
+		sql, args, err := t.args[argIndex].ToSQL(param)
 		if err != nil {
 			return "", nil, err
 		}
@@ -187,6 +187,8 @@ func (t templateStatement[P]) ToSQL(param P) (string, []any, error) {
 	return strings.TrimSpace(builder.String()), arguments, nil
 }
 
+var ErrRecursiveDepth = errors.New("sql: recursive statement too deep")
+
 func Recursive[P any](depth int, f func(self Statement[P], param P) (string, []any, error)) Statement[P] {
 	return recursiveStatement[P]{
 		maxDepth: depth,
@@ -201,7 +203,7 @@ type recursiveStatement[P any] struct {
 
 func (s recursiveStatement[P]) ToSQL(param P) (string, []any, error) {
 	if s.maxDepth < 0 {
-		return "", nil, errors.New("recursive statement too deep")
+		return "", nil, ErrRecursiveDepth
 	}
 
 	s.maxDepth--
@@ -209,7 +211,19 @@ func (s recursiveStatement[P]) ToSQL(param P) (string, []any, error) {
 	return s.stmt(s, param)
 }
 
-func Param[P any](f func(param P) (string, []any, error)) Statement[P] {
+func Values[P any](f func(param P) []any) Statement[P] {
+	return Expr(func(param P) (string, []any, error) {
+		args := f(param)
+
+		if len(args) == 0 {
+			return "", nil, nil
+		}
+
+		return "(" + strings.Repeat(",?", len(args))[1:] + ")", args, nil
+	})
+}
+
+func Expr[P any](f func(param P) (string, []any, error)) Statement[P] {
 	return paramStatement[P](f)
 }
 
@@ -246,6 +260,18 @@ func (f prefixStatement[P]) ToSQL(param P) (string, []any, error) {
 	}
 
 	return f.prefix + " " + sql, args, nil
+}
+
+func Where[P any](stmts ...Statement[P]) Statement[P] {
+	return Prefix("WHERE", Join(" AND ", stmts...))
+}
+
+func Having[P any](stmts ...Statement[P]) Statement[P] {
+	return Prefix("HAVING", Join(" AND ", stmts...))
+}
+
+func And[P any](stmts ...Statement[P]) Statement[P] {
+	return Stmt("(?)", Join(" AND ", stmts...))
 }
 
 func Join[P any](sep string, stmts ...Statement[P]) Statement[P] {
@@ -291,15 +317,13 @@ func (js joinStatement[P]) ToSQL(param P) (string, []any, error) {
 	return b.String(), arguments, nil
 }
 
-func List[P any](sep string, statement Statement[P]) Statement[[]P] {
+func List[P any](statement Statement[P]) Statement[[]P] {
 	return listStatement[P]{
-		sep:  sep,
 		stmt: statement,
 	}
 }
 
 type listStatement[P any] struct {
-	sep  string
 	stmt Statement[P]
 }
 
@@ -312,10 +336,10 @@ func (jp listStatement[P]) ToSQL(param []P) (string, []any, error) {
 	for _, p := range param {
 		if jp.stmt == nil {
 			if b.Len() > 0 {
-				b.WriteString(jp.sep)
+				b.WriteByte(',')
 			}
 
-			b.WriteString("?")
+			b.WriteByte('?')
 			arguments = append(arguments, p)
 
 			continue
@@ -331,7 +355,7 @@ func (jp listStatement[P]) ToSQL(param []P) (string, []any, error) {
 		}
 
 		if b.Len() > 0 {
-			b.WriteString(jp.sep)
+			b.WriteByte(',')
 		}
 
 		b.WriteString(sql)
@@ -341,51 +365,70 @@ func (jp listStatement[P]) ToSQL(param []P) (string, []any, error) {
 	return b.String(), arguments, nil
 }
 
-type Scanner[T any] func() (any, func(*T) error)
+type Scanner[T any] interface {
+	Scan() (any, func(*T) error)
+}
 
-func Scan[V, T any](f func(*T, V)) Scanner[T] {
-	return func() (any, func(*T) error) {
+func Scan[V, T any](f func(*T, V)) ScanFunc[V, T] {
+	return func(t *T, v V) error {
+		f(t, v)
+
+		return nil
+	}
+}
+
+func ScanTime[T any](layout string, f ScanFunc[time.Time, T]) ScanFunc[string, T] {
+	return func(t *T, s string) error {
+		v, err := time.Parse(layout, s)
+		if err != nil {
+			return err
+		}
+
+		return f(t, v)
+	}
+}
+
+type ScanFunc[V, T any] func(*T, V) error
+
+func (sf ScanFunc[V, T]) Scan() (any, func(*T) error) {
+	var v V
+
+	return &v, func(t *T) error {
+		return sf(t, v)
+	}
+}
+
+func (sf ScanFunc[V, T]) AsByte(f func([]byte) (V, error)) ScanFunc[[]byte, T] {
+	return func(t *T, b []byte) error {
+		v, err := f(b)
+		if err != nil {
+			return err
+		}
+
+		return sf(t, v)
+	}
+}
+
+func (sf ScanFunc[V, T]) AsString(f func(string) (V, error)) ScanFunc[string, T] {
+	return func(t *T, s string) error {
+		v, err := f(s)
+		if err != nil {
+			return err
+		}
+
+		return sf(t, v)
+	}
+}
+
+func (sf ScanFunc[V, T]) AsJSON() ScanFunc[[]byte, T] {
+	return func(t *T, b []byte) error {
 		var v V
 
-		return &v, func(t *T) error {
-			f(t, v)
-
-			return nil
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
 		}
-	}
-}
 
-func ScanNull[V, T any](def V, f func(*T, V)) Scanner[T] {
-	return func() (any, func(*T) error) {
-		var v *V
-
-		return &v, func(t *T) error {
-			if v == nil {
-				f(t, def)
-			} else {
-				f(t, *v)
-			}
-
-			return nil
-		}
-	}
-}
-
-func ScanJSON[V, T any](f func(*T, V)) Scanner[T] {
-	return func() (any, func(*T) error) {
-		var b []byte
-
-		return &b, func(t *T) error {
-			var v V
-
-			if err := json.Unmarshal(b, &v); err != nil {
-				return err
-			}
-
-			f(t, v)
-
-			return nil
-		}
+		return sf(t, v)
 	}
 }
 
@@ -446,7 +489,7 @@ func (q Query[T, P]) Rows(ctx context.Context, querier Querier, param P) (*Rows[
 
 	for i, c := range columns {
 		if s, ok := q.Columns[c]; ok && s != nil {
-			dest[i], mappers[i] = s()
+			dest[i], mappers[i] = s.Scan()
 		} else {
 			dest[i] = new(any)
 		}
@@ -475,28 +518,7 @@ func (q Query[T, P]) All(ctx context.Context, querier Querier, param P) ([]T, er
 		return nil, err
 	}
 
-	defer rows.Close()
-
-	var (
-		list  []T
-		index int
-	)
-
-	for rows.Next() {
-		list = append(list, *new(T))
-
-		if err = rows.Scan(&list[index]); err != nil {
-			return nil, err
-		}
-
-		index++
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return list, rows.Close()
+	return rows.All()
 }
 
 func (q Query[T, P]) First(ctx context.Context, querier Querier, param P) (T, error) {
@@ -507,24 +529,8 @@ func (q Query[T, P]) First(ctx context.Context, querier Querier, param P) (T, er
 		return t, err
 	}
 
-	defer rows.Close()
-
-	if !rows.Next() {
-		return t, sql.ErrNoRows
-	}
-
-	if err = rows.Scan(&t); err != nil {
-		return t, err
-	}
-
-	if err = rows.Err(); err != nil {
-		return t, err
-	}
-
-	return t, rows.Close()
+	return rows.First()
 }
-
-var ErrTooManyRows = errors.New("sql: too many rows in result set")
 
 func (q Query[T, P]) One(ctx context.Context, querier Querier, param P) (T, error) {
 	var t T
@@ -534,25 +540,7 @@ func (q Query[T, P]) One(ctx context.Context, querier Querier, param P) (T, erro
 		return t, err
 	}
 
-	defer rows.Close()
-
-	if !rows.Next() {
-		return t, sql.ErrNoRows
-	}
-
-	if err = rows.Scan(&t); err != nil {
-		return t, err
-	}
-
-	if rows.Next() {
-		return t, ErrTooManyRows
-	}
-
-	if err = rows.Err(); err != nil {
-		return t, err
-	}
-
-	return t, rows.Close()
+	return rows.One()
 }
 
 type Rows[T any] struct {
@@ -562,13 +550,18 @@ type Rows[T any] struct {
 }
 
 func (r *Rows[T]) Next() bool {
-	return r.Rows.Next()
+	return r.Rows != nil && r.Rows.Next()
 }
 
 func (r *Rows[T]) Scan(t *T) error {
+	if r.Rows == nil {
+		return sql.ErrNoRows
+	}
+
 	if err := r.Rows.Scan(r.Dest...); err != nil {
 		return err
 	}
+
 	return r.Map(t)
 }
 
@@ -579,11 +572,109 @@ func (r *Rows[T]) Value() (T, error) {
 }
 
 func (r *Rows[T]) Err() error {
+	if r.Rows == nil {
+		return sql.ErrNoRows
+	}
+
 	return r.Rows.Err()
 }
 
 func (r *Rows[T]) Close() error {
+	if r.Rows == nil {
+		return sql.ErrNoRows
+	}
+
 	return r.Rows.Close()
+}
+
+func (r *Rows[T]) All() ([]T, error) {
+	if r.Rows == nil {
+		return nil, sql.ErrNoRows
+	}
+
+	defer r.Rows.Close()
+
+	var (
+		list  []T
+		index int
+		err   error
+	)
+
+	for r.Rows.Next() {
+		list = append(list, *new(T))
+
+		if err = r.Scan(&list[index]); err != nil {
+			return nil, err
+		}
+
+		index++
+	}
+
+	if err = r.Rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return list, r.Rows.Close()
+}
+
+func (r *Rows[T]) First() (T, error) {
+	var (
+		err error
+		t   T
+	)
+
+	if r.Rows == nil {
+		return t, sql.ErrNoRows
+	}
+
+	defer r.Rows.Close()
+
+	if !r.Rows.Next() {
+		return t, sql.ErrNoRows
+	}
+
+	if err = r.Scan(&t); err != nil {
+		return t, err
+	}
+
+	if err = r.Rows.Err(); err != nil {
+		return t, err
+	}
+
+	return t, r.Rows.Close()
+}
+
+var ErrTooManyRows = errors.New("sql: too many rows in result set")
+
+func (r *Rows[T]) One() (T, error) {
+	var (
+		err error
+		t   T
+	)
+
+	if r.Rows == nil {
+		return t, sql.ErrNoRows
+	}
+
+	defer r.Rows.Close()
+
+	if !r.Rows.Next() {
+		return t, sql.ErrNoRows
+	}
+
+	if err = r.Scan(&t); err != nil {
+		return t, err
+	}
+
+	if r.Rows.Next() {
+		return t, ErrTooManyRows
+	}
+
+	if err = r.Rows.Err(); err != nil {
+		return t, err
+	}
+
+	return t, r.Rows.Close()
 }
 
 type Exec[P any] struct {

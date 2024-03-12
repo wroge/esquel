@@ -73,7 +73,7 @@ func main() {
 	}
 
 	insertAuthor := esquel.Query[int64, string]{
-		Statement: esquel.Template[string]("INSERT INTO authors (name) VALUES (?) RETURNING id"),
+		Statement: esquel.Stmt[string]("INSERT INTO authors (name) VALUES (?) RETURNING id"),
 	}
 
 	ammousID, err := insertAuthor.One(ctx, db, "Saifedean Ammous")
@@ -84,8 +84,8 @@ func main() {
 	// [Saifedean Ammous]
 
 	insertAuthors := esquel.Query[int64, []string]{
-		Statement: esquel.Template("INSERT INTO authors (name) VALUES ? RETURNING id",
-			esquel.List(",", esquel.Template[string]("(?)")),
+		Statement: esquel.Stmt("INSERT INTO authors (name) VALUES ? RETURNING id",
+			esquel.List(esquel.Stmt[string]("(?)")),
 		),
 	}
 
@@ -99,9 +99,9 @@ func main() {
 	antonopoulosID, boyapatiID := authorsID[0], authorsID[1]
 
 	insertBooks := esquel.Query[int64, []InsertBook]{
-		Statement: esquel.Template("INSERT INTO books (title, author_id) VALUES ? RETURNING id",
-			esquel.List(",", esquel.Param(func(param InsertBook) (string, []any, error) {
-				return "(?,?)", []any{param.Title, param.AuthorID}, nil
+		Statement: esquel.Stmt("INSERT INTO books (title, author_id) VALUES ? RETURNING id",
+			esquel.List(esquel.Values(func(param InsertBook) []any {
+				return []any{param.Title, param.AuthorID}
 			})),
 		),
 	}
@@ -121,43 +121,31 @@ func main() {
 	// [1 2 3]
 
 	queryBooks := esquel.Query[Book, QueryBook]{
-		Statement: esquel.Template(`
-			SELECT 
-				books.id AS book_id, books.title AS book_title, books.created AS book_created, 
+		Statement: esquel.Stmt(`
+			SELECT books.id AS book_id, books.title AS book_title, books.created AS book_created, 
 				authors.id AS author_id, authors.name AS author_name
-			FROM books LEFT JOIN authors ON authors.id = books.author_id
-		`, esquel.Prefix("WHERE",
-			esquel.Join(" AND ",
-				esquel.Param(func(q QueryBook) (string, []any, error) {
+			FROM books LEFT JOIN authors ON authors.id = books.author_id ? LIMIT 10`,
+			esquel.Where(
+				esquel.Expr(func(q QueryBook) (string, []any, error) {
 					if q.Title == "" {
 						return "", nil, nil
 					}
 
 					return "books.title = ?", []any{q.Title}, nil
 				}),
-				esquel.Param(func(q QueryBook) (string, []any, error) {
+				esquel.Expr(func(q QueryBook) (string, []any, error) {
 					if q.Author == "" {
 						return "", nil, nil
 					}
 
 					return "authors.name = ?", []any{q.Author}, nil
 				}),
-			),
-		)),
+			)),
 		Columns: map[string]esquel.Scanner[Book]{
 			"book_id":    esquel.Scan(func(b *Book, id int64) { b.ID = id }),
-			"book_title": esquel.ScanNull("No Title", func(b *Book, title string) { b.Title = title }),
-			"book_created": func() (any, func(*Book) error) {
-				var created string
-
-				return &created, func(b *Book) error {
-					var err error
-
-					b.Created, err = time.Parse(time.DateTime, created)
-
-					return err
-				}
-			},
+			"book_title": esquel.Scan(func(b *Book, title sql.NullString) { b.Title = title.String }),
+			"book_created": esquel.ScanTime(time.DateTime,
+				esquel.Scan(func(b *Book, created time.Time) { b.Created = created })),
 			"author_id":   esquel.Scan(func(b *Book, id int64) { b.Author.ID = id }),
 			"author_name": esquel.Scan(func(b *Book, name string) { b.Author.Name = name }),
 		},
@@ -167,11 +155,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// SELECT
-	// 	books.id AS book_id, books.title AS book_title, books.created AS book_created,
+	// SELECT books.id AS book_id, books.title AS book_title, books.created AS book_created,
 	// 	authors.id AS author_id, authors.name AS author_name
-	// FROM books LEFT JOIN authors ON authors.id = books.author_id
-	// WHERE books.title = ?
+	// FROM books LEFT JOIN authors ON authors.id = books.author_id WHERE books.title = ? LIMIT 10
 	// [The Bitcoin Standard]
 
 	fmt.Println(books)
