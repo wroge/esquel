@@ -69,7 +69,7 @@ func main() {
 		id INTEGER PRIMARY KEY, 
 		title TEXT, 
 		author_id INTEGER REFERENCES authors(id), 
-		created DEFAULT CURRENT_TIMESTAMP
+		created timestamp DEFAULT CURRENT_TIMESTAMP
 	)`)
 	if err != nil {
 		panic(err)
@@ -145,14 +145,17 @@ func main() {
 				}),
 			))),
 		Columns: map[string]esquel.Scanner[Book]{
-			"book_id":    esquel.Scan(func(b *Book, id int64) { b.ID = id }),
-			"book_title": esquel.Scan(func(b *Book, title sql.NullString) { b.Title = title.String }),
-			"book_created": esquel.Scan(func(b *Book, created time.Time) { b.Created = created }).
-				AsString(func(s string) (time.Time, error) {
-					return time.Parse(time.DateTime, s)
-				}),
-			"author_id":   esquel.Scan(func(b *Book, id int64) { b.Author.ID = id }),
-			"author_name": esquel.Scan(func(b *Book, name string) { b.Author.Name = name }),
+			"book_id": esquel.Scan(func(b *Book, id int64) { b.ID = id }),
+			"book_title": esquel.Scan(func(b *Book, title sql.NullString) {
+				if title.Valid {
+					b.Title = title.String
+				} else {
+					b.Title = "No Title"
+				}
+			}),
+			"book_created": esquel.Scan(func(b *Book, created time.Time) { b.Created = created }),
+			"author_id":    esquel.Scan(func(b *Book, id int64) { b.Author.ID = id }),
+			"author_name":  esquel.Scan(func(b *Book, name string) { b.Author.Name = name }),
 		},
 	}
 
@@ -182,4 +185,5 @@ func main() {
 	fmt.Println(books)
 	// [{3 The Bullish Case for Bitcoin {3 Vijay Boyapati} 2024-03-08 13:10:36 +0000 UTC}]
 }
+
 ```
